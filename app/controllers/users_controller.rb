@@ -1,28 +1,43 @@
 # Controller for Users such as teachers and administrators
 class UsersController < ApplicationController
-  before_filter :require_user, :require_admin
-  #probably need this?
-#  before_filter :set_user, only: [:show, :edit, :update, :destroy]
+  before_filter :require_user, :not_admin
 
   def new
     @user = User.new
-    #temp = Resource.create!(resource_params)
-    #temp.category_ids = params[:category_ids]
-    #temp.save!
+  end
+  
+  def not_admin
+    if params[:id] && User.find(params[:id]) == current_user
+      #checks if the current user is looking at themself
+      return true
+    else
+      require_admin
+    end
   end
 
   def create
     @user = User.new(params[:user])
     @user.login = :email
-
+    @password_valid = false
+    if @user.password != nil
+      @password_length = @user.password.length > 7
+      @password_uppercase = @user.password =~ /[A-Z]/ #checks if password contains uppercase letter
+      @password_number = @user.password =~ /\d/ #checks if password contains a number
+      @password_valid = true
+    end
     # Saving without session maintenance to skip
     # auto-login which can't happen here because
     # the User has not yet been activated
-    if @user.save
-      flash[:notice] = 'Your account has been created.'
-      redirect_to '/users'
+    if(@password_valid && @password_length && @password_uppercase && @password_number)
+      if @user.save
+        flash[:notice] = 'Your account has been created.'
+        redirect_to '/users'
+      else
+        flash[:notice] = 'There was a problem creating your account.'
+        render action: :new
+      end
     else
-      flash[:notice] = 'There was a problem creating your account.'
+      flash[:notice] = "Password must contain at least one number, uppercase letter, and be at least 8 characters"
       render action: :new
     end
   end
@@ -32,27 +47,46 @@ class UsersController < ApplicationController
     @users = User.all
   end
 
+  def show
+    @user = User.find(params[:id])
+  end
+
   def edit
     @user = User.find(params[:id])
   end
 
   def update
-#      params[:user][:classroom_ids] ||= []
-      @user = User.find(params[:id])
-      if (params[:user][:password]==(params[:user][:password_confirmation]))
-
+    @user = User.find(params[:id])
+    if (params[:user][:password]==(params[:user][:password_confirmation]))
+      @name_exists = params[:user][:name].length > 0
+      @password_length = params[:user][:password].length > 7
+      @password_uppercase = (params[:user][:password] =~ /[A-Z]/) #checks if password contains uppercase letter
+      @password_number = (params[:user][:password] =~ /\d/) #checks if password contains a number
+      if (@name_exists)
         @user.update_attribute(:name , params[:user][:name])
-        @user.update_attribute(:email , params[:user][:email])
-        @user.update_attribute(:password , params[:user][:password])
-        @user.update_attribute(:password_confirmation , params[:user][:password_confirmation])
-        @user.update_attribute(:admin , params[:user][:admin])
-        @user.update_attribute(:classroom_ids , params[:user][:classroom_ids])
-        flash[:notice] = 'Account updated!'
-        redirect_to '/users'
       else
-        flash[:notice] = "Passwords aren't the same"
+        flash[:notice] = "Name cannot be blank"
+      end
+      @user.update_attribute(:email , params[:user][:email])
+      if(@password_length && @password_uppercase && @password_number)
+        @user.update_attribute(:password , params[:user][:password])
+      else
+        flash[:notice] = "Password must contain at least one number, uppercase letter, and be at least 8 characters"
+      end
+      @user.update_attribute(:password_confirmation , params[:user][:password_confirmation])
+      @user.update_attribute(:admin , params[:user][:admin])
+      @user.update_attribute(:classroom_ids , params[:user][:classroom_ids])
+      @user.update_attribute(:phone_number , params[:user][:phone_number])       
+      if !flash[:notice]
+        flash[:notice] = 'Account updated!'
+        redirect_to @user
+      else
         render :action => :edit
       end
+    else
+      flash[:notice] = "Passwords aren't the same"
+      render :action => :edit
+    end
   end
 
   def destroy
